@@ -1,0 +1,338 @@
+
+
+## Assignment
+
+The file `project_data.rda` contains the following data frames, which all pertain to global health statistics
+
+  + `pop.by.age`: contains the population for 138 countries, for the years 1950-2050 (using projected populations after 2007), broken up into three age groups (0-19 years, 20-60 years, and 61+ years)
+  + `gdp.lifeExp`: the per capita GDP (a measure of economic wealth) and life expectancy for these countries, for the years 1952-2007
+  + `gdp.lifeExp.small`: a small subset of the years in `gdp.lifeExp`
+  + `continents`: the continent of each country in the previous datasets
+
+This data was made famous by Hans Rosling (1948-2017) and his Gapminder Foundation. You can see one of his videos here: https://www.youtube.com/watch?v=BPt8ElTQMIg
+
+## Part 1
+
+The file `part1.pdf` shows how the age demographics are changing over time for all 138 countries in the data set, where we have used the `Mclust` clustering algorithm to divide the countries up into four groups (note that the clusters differ slightly from the continents):
+
+  + group 1: a group whose age demographics are younger than the other countries, for the entire time span
+  + group 4: a group whose age demographics are older than the other countries, particularly in later years
+  + groups 2 and 3: these groups initially are young and look more like group 1 in 1950, but in later years their demographics shift towards group 4. This might be due to improvements in living quality for these countries. Group 3 shifts further than group 2. 
+
+Your first task is to recreate this plot (or create a similar one), using the data set `pop.by.age` which is in the file `project_data.rda`.
+
+
+```{r}
+library(mclust)
+library(ggplot2)
+library(plyr)
+library(ggplot2)
+library(magrittr)
+citation("mclust")
+# load the dataset
+load('project_data.rda')
+
+pop.by.age = dplyr::mutate(
+	pop.by.age,
+	total_population = `0.to.19.yrs` + `20.to.60.yrs` +`above.61.yrs`,
+	`0.to.19.yrs.pct` = `0.to.19.yrs` / total_population,
+	`20.to.60.yrs.pct` = `20.to.60.yrs` / total_population,
+	`above.61.yrs.pct` = `above.61.yrs` / total_population)
+
+# Select only the essential columns for further processing and visualization. Here "toal_population" column is insignificant
+pop.by.age = dplyr::select(pop.by.age, country, continent, year, `0.to.19.yrs.pct`, `20.to.60.yrs.pct`, `above.61.yrs.pct`)
+
+# Melt 0.to.19.yrs.pct, 20.to.60.yrs.pct and above.61.yrs.pct into a single column
+age.pop.melt = reshape2::melt(pop.by.age, id.vars=c("country", "year", "continent"))
+
+# Make a column which has the interactions combinations of year+0.to.19.yrs.pct, year+20.to.60.yrs.pct and year+above.61.yrs.pct
+age.pop.mutate = mutate(age.pop.melt, year.variable = interaction(year, variable))
+
+# Make a subset with country year.variable and value and continent as the columns
+age.pop.subset = subset(age.pop.mutate, select = c('country', 'year.variable', 'value', 'continent'))
+
+# Spread the values so that each country has one row
+age.pop.spread = tidyr::spread(age.pop.subset, key = year.variable, value = value)
+
+age.pop.spread.subset = age.pop.spread[,3 : ncol(age.pop.spread)]
+
+# Perform the Mclust clustering on the year.variable columns with 4 groups
+output = Mclust(age.pop.spread.subset, G=4)
+
+# attach the classification column under the data frame
+age.pop.spread$class = output$classification
+age.pop.melt = merge(age.pop.melt, subset(age.pop.spread, select = c('country', 'class')))
+
+# Plot the different percentages for each country clustered/grouped by group of countries and colored by continent over the range of years
+ggplot(data=age.pop.melt, mapping=aes(x=year, y=value, group=country, colour=continent)) +            geom_line(data=transform(age.pop.melt, class = NULL), mapping=aes(x=year, y=value, group=country), colour="grey", size=0.25) + 
+        geom_line(size=0.25) + 
+        facet_grid(class ~ variable) +
+        labs(y = "Percent", title = "Population by Age (in percentage) over Time")
+
+```
+
+* Interpretations:
+  * Across different groups, we could observe that Europe continent has decreased in percentage population in 0.to.19.yrs.pct category over the years. However above.61.yrs.pct category, Europe emerged in population percentage over the years.
+  * African countries in group 1 were found to have decrease in population over the years in 0.to.19.yrs.pct category. Similar trends were seen for other continents like Asia.
+  * For Africa, in the above.1.yrs.pct category in group 1 countries showed no significant increase or dercrease over the years in terms of percentage change in people.
+
+## Part 2
+
+Create a similar plot as in part 1, but for the `gdp.lifeExp` dataset. Use clustering to divide the countries into groups which had similar changes to life expectancy and GDP over time. For each cluster, comment on how life expectancy and GDP is changing over time.
+
+```{r}
+
+# Melt gdp.per.capita, lifeExp into a single column
+gdp.lifeExp.melt = reshape2::melt(gdp.lifeExp, id.vars=c("country", "year", "continent"))
+
+# Make a column which has the interactions combinations of year+GDP and year+lifeExp
+gdp.lifeExp.mutate = mutate(gdp.lifeExp.melt, year.variable = interaction(year, variable))
+
+# Make a subset with country year.variable and value and continent as the columns
+gdp.lifeExp.subset = subset(gdp.lifeExp.mutate, select = c('country', 'year.variable', 'value', 'continent'))
+
+# Spread the values so that each country has one row
+gdp.lifeExp.spread = tidyr::spread(gdp.lifeExp.subset, key = year.variable, value = value)
+
+# Perform the Mclust clustering on the year.variable columns with 4 groups
+output = Mclust(gdp.lifeExp.spread[,3:ncol(gdp.lifeExp.spread)], G=4)
+
+# Attach the classification column under the data frame
+gdp.lifeExp.spread$class = output$classification
+
+gdp.lifeExp.melt = merge(gdp.lifeExp.melt, subset(gdp.lifeExp.spread, select = c('country', 'class')))
+
+# Plot the different gdp.per.capita and lifeExp groups for each clustered/grouped by group of countries and colored by continent over the range of years
+ggplot(data=gdp.lifeExp.melt, mapping=aes(x=year, y=value, group=country, colour=continent)) +
+      geom_line(data=transform(gdp.lifeExp.melt, class = NULL), mapping=aes(x=year, y=value, group=country), colour="grey", size=0.25) + 
+      geom_line(size=0.25) + 
+      facet_grid(variable ~ class, scales = "free") + 
+      theme(axis.text.x=element_text(angle=45, hjust=1))
+
+```
+
+* Interpretations:
+  + Continents like Asia and Africa in group 1, show increase in life expectancy over the years.
+  + Over time, under 2nd category of countries, mostly Asia have shown little ot no improvement in gdp.per.capita. Africa has shown a little significant improvement in gdp per capita compared to Asia but is very less in comparison to other group of countries in other continents.
+  + In group 2 cluster, we see that Europe has shown maximum improvement in life expectancy over the years, followed by Asian countries and then lastly Africa. The gdp per capita under this group 2 cluster is significant for Europe mostly and Africa. So, even though Africa's life expectancy hasnt increased much but its gdp has improved to a little extent. Also, European counties under this cluster 2 shows increase in life expectancy of its population and gdp.
+  + In group 3 cluster, again European countries shows maximum increase in life expectancy. It is the highest as compared to other group of countries too. However, if we see group 3 cluster, there is a sudden drop in gdp.per.capita for Asia which could be due to some factors. European countries under this cluster again shows an increassing trend of gdp.per.capita. 
+  + In the last cluster 4, African countries shows an increasing trend in the lifeexpectancy but compared to other cluster groups this cluster group shows lesser improvements. The gdp.per.capita is more or less constant for African countries in this cluster 4.
+
+
+## Part 3
+
+The plot format that we used in parts 1 and 2 has some advantages in letting you see the trajectory of each country over time, but also has some disadvantages.
+
+Comment on these disadvantages, and then use the data frame `gdp.lifeExp.small` to make a few plots (probably 1-3) to answer the following: how did each country evolve over time, in terms of life expectancy and per capita gdp? Your plots should let me identify both overall patterns followed by many countries, as well as individual countries which went against the overall pattern.
+
+This dataset only contains the first and last year for each country (1952 and 2007), so you should make plots that are different from parts 1 and 2. 
+
+```{r}
+# reshaping data to have 1 row per country
+gdp.melted = reshape2::melt(gdp.lifeExp.small, id.vars=c('country', 'year', 'continent'))
+gdp.mutate = mutate(gdp.melted, year.variable=interaction(year, variable))
+gdp.subset = subset(gdp.mutate, select = c('country', 'year.variable', 'value'))
+gdp.spread = tidyr::spread(gdp.subset, key=year.variable, value=value)
+gdp.merged = merge(gdp.spread, continents)
+
+# OUTLIER GRAPH
+gdp.diff = dplyr::transmute(
+	gdp.merged,
+	country = country,
+	continent = continent,
+	gdp.change = `2007.gdp.per.capita` - `1952.gdp.per.capita`,
+	lifeExp.change = `2007.lifeExp` - `1952.lifeExp`)
+
+# function for checking if a point is outlier or not
+is_outlier = function(x) {
+  return(x < quantile(x, 0.25) - 1.5 * IQR(x) | x > quantile(x, 0.75) + 1.5 * IQR(x))
+}
+
+gdp.with.outliers = ddply(gdp.diff, ~continent, function(df) {
+		df$gdp.wise = ifelse(is_outlier(df$gdp.change), as.character(df$country), as.factor(NA))
+		df$lifeExp.wise = ifelse(is_outlier(df$lifeExp.change), as.character(df$country), as.factor(NA))
+		df
+	})
+
+# Plot for outliers in boxplot for gdp change and life expectancy 
+gdp.with.outliers = gdp.with.outliers[gdp.with.outliers$country != "Kuwait",] # Excluding Kuwait 
+ggplot(data = gdp.with.outliers, aes(x = continent, y = gdp.change)) + geom_boxplot(outlier.colour = "blue") + geom_text(aes(label = gdp.wise), na.rm = TRUE,  size = 2, hjust = -0.3)
+ggplot(data = gdp.with.outliers, aes(x = continent, y = lifeExp.change)) + geom_boxplot(outlier.colour = "blue") + geom_text(aes(label = lifeExp.wise), na.rm = TRUE,  size = 2, hjust = -0.3)
+
+# Interpretation:
+
+# 1. From the boxplots, we can observe that Singapore in Asian continent is one such country which has gdp change beyond the normal trend among other countries.
+# 2. In American continent, United States, Canada, PuertoRico and Trinidad are the countries which are against the normal trends of change in gdp.
+# 3. In African continent, Libya, Egypt etc are those countries which are acting as outliers in gdp change among other coutries in Africa.
+# 4. There is no outlier or abnormal trend in countries been observed in Europe and Oceania.
+# 5. Only in Europe continent, we could observe two such countries Turkey and Albania which shows abnormally outlier trend among other European countries in case on life expectancy. All other continents doesn't show any outlier trends in countries.
+
+# REFERENCE LINE GRAPH
+# Computing the percentage change in life expectancy and gdp per capita
+gdp.pct = dplyr::transmute(
+        gdp.merged,
+        country = country,
+        continent = continent,
+        lifeExp.change = `2007.lifeExp` / `1952.lifeExp` - 1,
+        gdp.change = `2007.gdp.per.capita` / `1952.gdp.per.capita` - 1)
+lifeExp.mean = mean(gdp.pct$lifeExp.change)
+gdp.mean = mean(gdp.pct$gdp.change)
+# Computing the signs of the change in gdp and life expectancy 
+gdp.pct$lifeExp.change.sign = ifelse(gdp.pct$lifeExp.change >= lifeExp.mean, "green", "red")
+gdp.pct$gdp.change.sign = ifelse(gdp.pct$gdp.change >= gdp.mean, "green", "red")
+
+# Plot shwing trend reference line with life expectancy change among all the ocunties grouped by continent The the reference line is the average line and the dark line is the x=0th line.
+ggplot(data=gdp.pct, mapping=aes(x=country, y=lifeExp.change, fill=lifeExp.change.sign)) +
+        geom_bar(stat='identity', position = 'dodge', show.legend=FALSE, na.rm=TRUE) +
+        facet_wrap("continent", ncol=5) +
+        geom_hline(yintercept=0) +
+        geom_hline(yintercept = mean(gdp.pct$lifeExp.change), colour="grey") +
+        coord_flip() +
+        theme(axis.text.y = element_text(size=4))
+
+# Plot shwing trend reference line with gdp per capita change among all the ocunties grouped by continent The the reference line is the average line and the dark line is the 0th line.
+ggplot(data=gdp.pct, mapping=aes(x=country, y=gdp.change^(1/2), fill=gdp.change.sign)) +
+        geom_bar(stat='identity', position = 'dodge', show.legend=FALSE, na.rm=TRUE) +
+        facet_wrap("continent", ncol=5) +
+        geom_hline(yintercept=0) +
+        geom_hline(yintercept = mean(gdp.pct$gdp.change), colour="grey") +
+        coord_flip() +
+        theme(axis.text.y = element_text(size=4))
+
+# Interpretation: 
+# 1. In African continent, Zimbabwe and Swaziland shows negative chnage in life expectancy.
+# 2. Most of the european countries showed below average increase, while African & Asian coutries showed above average increase the most.
+# 3. Most of the european countries saw positive increase in GDP and most of the African countries saw significant decrease in gdp.per.capita.
+
+```
+
+
+```{r, cache=TRUE, fig.height = 4, cache=TRUE}
+# your work goes here (but you can make more R chunks if it helps to break up the discussion)
+
+gdp.lifeExp.ref = gdp.lifeExp.small
+
+# Adding columns with difference in gdp and life exp from 1952 to 2007
+gdp.lifeExp.small = ddply(gdp.lifeExp.small, ~ country, mutate, diff.lifeExp = diff(lifeExp), diff.gdp = diff(gdp.per.capita))
+
+gdp.lifeExp.work = gdp.lifeExp.small
+
+# data frame showing continent of each country
+summary.continent <- ddply(gdp.lifeExp.work, ~ country, summarize, continent = unique(continent))
+
+gdp.lifeExp.work = unique(gdp.lifeExp.work[, -which(names(gdp.lifeExp.work) %in% c("year"))])
+
+#################################################################
+
+# Columns added for difference in gdp.per.capita and life expectancy for each country for year 1952 to 2007
+df.diff = ddply(gdp.lifeExp.small, ~country, summarize,
+                diff.gdp = gdp.per.capita[which( year == max(year))] - gdp.per.capita[which(year== min(year))], 
+                diff.lifex = lifeExp[which(year == max(year))] - lifeExp[which(year == min(year))])
+
+# Excluding country Kuwait for better plot visualizations (as Kuwait shows significant outlier trend)
+df.diff = df.diff[df.diff$country != "Kuwait",]
+
+# Plots showing countries with diff in gdp aand diff in life exp.
+ggplot(df.diff, mapping = aes(y=diff.lifex, x = diff.gdp)) + 
+      geom_point(color = "red", size = 0.5) + 
+      geom_text(mapping = aes(label=country), size = 3, hjust = -0.2) +
+      geom_vline(xintercept = mean(df.diff$diff.gdp)) +
+      geom_hline(yintercept = mean(df.diff$diff.lifex)) +
+      labs(x = "Change in GDP.per.capita 1952-2007", y = "Change in Life Expectancy from 1952-2007", label = "Countries showing trends in gdp per capita and life expectancy (Kuwait was observed to show a distant outlier in the observation and so was excluded while plotting")
+
+# Interpretation: 
+# 1. Kuwait is one such country where change in gdp.per.capita is not significant as compared to all other countries. However it has good increase in life expectancy from year 1952 to 2007.
+# 2. Zimbabwe shows minimum change in life expectancy as compared to all othet countries, in fact its gdp.per.capita decreased from 1952 to 2007.
+# 3. Singapore experienced maximum increase in gdp.per.capita as compared to all other countries and has life expectancy change of about 20.
+# 4. Onam shows maximum increase in life expectancy from 1952 to 2007.
+# 5. Countries like Oman, Saudi Arabia, Libya lie to the right side of the reference line for mean gdp change and above the mean life expectancy change. These counties show a significant high changein both gdp and life expectancy. (1st quadrant)
+
+```
+
+
+```{r}
+
+# Density plot for gdp.per.capita in the year 1952 and 2007 colored by continent
+ggplot(data = gdp.lifeExp.small, aes(x = gdp.per.capita, fill=continent)) + geom_density(alpha=0.6) + facet_wrap( ~ year) + scale_x_log10()
+
+# Density plot for life expectancy in the year 1952 and 2007 colored by continent
+ggplot(data = gdp.lifeExp.small, aes(x = lifeExp, fill=continent)) + geom_density(alpha=0.6) + facet_wrap( ~ year) + scale_x_log10()
+
+# Interpretation:
+# 1. The density plot shows that in year 1952, the gdp.per.capita density for American countries was maximum. Whereas in 2007 American gdp.per.capita density decreased. 
+# 2. For European countries, the gdp.per.capita density increased overall from 1952 - 2007.
+# 3. For other continents, the gdp.per.capita density was almost the same in both years i.e. no significant improvement or decrease wasn't observed.
+# 4. For European countries, the lifeexpectancy was observed to increase from 1952 to 2007.
+# 5. Also, for Americn countries, the lifeexpectancy was observed to increase from 1952 to 2007 but lesser than european countries.
+
+```
+
+
+```{r}
+############### Extra Plots which I tried and thought of including in my report #####################
+
+# Boxplot showing lifeExp of each continent and the outlier counties in each year
+ggplot(data = gdp.lifeExp.small, aes(x = continent, y = lifeExp)) +
+    geom_boxplot(outlier.colour = "red") +
+    geom_text(data = gdp.lifeExp.small, aes(label = country), size = 2) + facet_wrap(~ year)
+
+# Boxplot showing gdp per capita of each continent and the outlier counties in each year
+ggplot(data = gdp.lifeExp.small, aes(x = continent, y = log(gdp.per.capita))) +
+    geom_boxplot(outlier.colour = "blue") +
+    geom_text(data = gdp.lifeExp.small, aes(label = country), size = 2) + facet_wrap(~ year)
+
+# Arrow plot showing the trend of countries based on gdp and lifeexp
+ggplot(gdp.lifeExp.small, mapping = aes(y=lifeExp, x = log(gdp.per.capita), group = country, colour = continent)) + geom_line(arrow = arrow(), size = 0.25) + geom_text(mapping = aes(label=country), size = 2, position = position_jitter(height = 0, width = 0.3), color = "red")
+
+# filter data for 2007 only
+longevity <- dplyr::filter(gdp.lifeExp.small, year == 2007 & !is.na(lifeExp))
+
+#Find the 20 countries with the longest life expectancy in 2007
+long_life <- arrange(longevity, desc(lifeExp)) 
+long_life = mutate(long_life, rank = c(1:142))
+top.20 = dplyr::filter(long_life, rank<=20)
+ggplot(top.20, mapping = aes(x=lifeExp, y=log(gdp.per.capita))) + geom_point(color = "blue") + geom_text(mapping = aes(label=country))
+
+#################################################################
+
+# Find the 30 countries with the largest difference of life expectancy from 1952 to 2007
+long_life <- arrange(gdp.lifeExp.work, desc(diff.lifeExp)) 
+long_life = mutate(long_life, rank = c(1:nrow(gdp.lifeExp.work)))
+top.30 = dplyr::filter(long_life, rank<=30)
+ggplot(top.30, mapping = aes(x=continent, y=diff.lifeExp)) + geom_point(color = "blue") + geom_text(mapping = aes(label=country), size = 4, hjust = -0.2)
+
+# Find the 30 countries with the largest difference in GDP per Capita from 1952 to 2007
+long_life <- arrange(gdp.lifeExp.work, desc(diff.gdp)) 
+long_life = mutate(long_life, rank = c(1:nrow(gdp.lifeExp.work)))
+top.30 = dplyr::filter(long_life, rank<=30)
+ggplot(top.30, mapping = aes(x=continent, y=diff.gdp)) + geom_point(color = "red") + geom_text(mapping = aes(label=country), size=4, hjust = -0.2)
+
+year.min.1952 <- c(1952)
+# Function returns slope and intercept from regressing lifeExp on 2007 to 1952
+get.Coef.lm <- function(df) {
+  coefs <- lm(lifeExp ~ I(year - year.min.1952), data = df)$coef
+  names(coefs) <- c("intercept", "slope")
+  coefs
+}
+
+# Coefficients summary data frame
+summary.coef <- ddply(gdp.lifeExp.small, ~ country, get.Coef.lm)
+
+# Merge data together
+country.merge <- merge(summary.coef, summary.continent, by = "country")
+
+# Reorder the countries according to intercept
+summary.slope <- transform(country.merge, country = reorder(country, slope))
+# Construct ggplot object, will fill color determined by continent
+slope.fig <- ggplot(data = summary.slope, mapping = aes(x = country, y = slope, fill = continent))
+# Construct bar chart
+slope.fig + geom_bar(stat = "identity") +
+               theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size=4)) +
+               xlab("Country") + ylab("Slope(Trend) of Life Expectancy from 1952 to 2007")
+############################################
+
+```
+
+## References: 
+* http://stackoverflow.com/questions/33524669/labeling-outliers-of-boxplots-in-r
+* http://www.andrew.cmu.edu/user/achoulde/94842/lectures/lecture12/lecture12-94842.html 
