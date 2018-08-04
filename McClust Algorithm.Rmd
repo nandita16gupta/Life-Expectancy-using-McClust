@@ -294,7 +294,7 @@ get.Coef.lm <- function(df) {
   coefs
 }
 
-# Coefficients summary data frame
+# Coefficients summary data frame for our model
 summary.coef <- ddply(gdp.lifeExp.small, ~ country, get.Coef.lm)
 
 # Merge data together
